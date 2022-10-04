@@ -1,0 +1,116 @@
+# Azure Pipeline qui exécute une intégration continue de base sur un projet Terraform
+# Cela garantit que le pipeline est déclenché chaque fois que le code est poussé dans la source de l'exemple de test de validation, sur toutes les branches.
+trigger:
+  branches:
+    include:
+    - '*'
+  paths:
+    include:
+    - 'terraform/*'
+variables:
+ 
+ 
+# Il doit y avoir une connexion au service Azure avec ce nom défini dans vos paramètres Azure DevOps. Voir https://docs.microsoft.com/en-us/azure/devops/pipelines/library/connect-to-azure?view=azure-devops
+  serviceConnection: 'terraform'
+  azureLocation: 'westeurope'
+ 
+ 
+  # Terraform parrametre
+  terraformWorkingDirectory: '$(System.DefaultWorkingDirectory)/'
+  terraformVersion: '1.2.3'
+stages:
+  - stage: TerraformContinuousIntegration
+    displayName: Terraform Module - CI
+    jobs:
+    - job: TerraformContinuousIntegrationJob
+    
+        
+      displayName: TerraformContinuousIntegration - CI Job
+      pool:
+        vmImage: ubuntu-20.04
+        env:
+          ARM_CLIENT_ID: $(ARM_CLIENT_ID)  #user azure pour terraform communqiue
+          ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+          ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+          ARM_TENANT_ID: $(ARM_TENANT_ID)
+      steps:
+      
+      - task: qetza.replacetokens.replacetokens-task.replacetokens@3
+        displayName: 'Replace tokens in **/*.tfvars **/provider.tf'
+        inputs:
+          rootDirectory: $(terraformWorkingDirectory)
+          targetFiles: |
+            **/*.tfvars
+            **/provider.tf
+          encoding: 'auto'
+          writeBOM: true
+          actionOnMissing: 'warn'
+          keepToken: false
+          tokenPrefix: '__'
+          tokenSuffix: '__'
+    
+    
+ 
+ 
+ 
+       # Étape1 : installez Terraform sur l'agent Azure Pipelines
+      - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-installer.TerraformInstaller@0
+        displayName: 'Install Terraform'
+        inputs:
+          terraformVersion: $(terraformVersion)
+    
+    
+    
+      
+# Étape 2 : lancez Terraform init pour initialiser l'espace de travail
+      - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-cli.TerraformCLI@0
+        displayName: 'Run terraform init'
+        inputs:
+          command: init
+          workingDirectory: $(terraformWorkingDirectory)
+          environmentServiceNameAzureRM: 'terraform'
+          backendServiceArm: 'terraform'
+          backendAzureRmResourceGroupName: $(backend-rg)
+          backendAzureRmStorageAccountName: $(storage-account-name)
+          backendAzureRmContainerName: $(container-name)
+          backendAzureRmKey: $(backend-name)    
+    
+    # Étape 3 : exécutez Terraform validate pour valider la syntaxe HCL
+      - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-cli.TerraformCLI@0
+        displayName: 'Run terraform validate'
+        inputs:
+          command: validate
+          workingDirectory: $(terraformWorkingDirectory)
+          environmentServiceNameAzureRM: 'terraform'
+#----------------
+#terraform plan
+#--------------   
+      - task: TerraformTaskV1@0
+        displayName: Terraform plan
+        inputs:
+          provider: 'azurerm'
+          command: 'plan'
+          workingDirectory: $(terraformWorkingDirectory)
+          commandOptions: '-input=false -var-file="variables.tfvars"'
+          environmentServiceNameAzureRM: 'terraform'
+#---------------
+#terrra apply
+#-------------
+      - task: TerraformTaskV1@0
+        displayName: Terraform apply
+        inputs:
+          provider: 'azurerm'
+          command: 'apply'
+          workingDirectory: $(terraformWorkingDirectory)
+          commandOptions: '-input=false -var-file="variables.tfvars"'
+          environmentServiceNameAzureRM: 'terraform'
+
+
+
+
+
+
+
+
+
+      
